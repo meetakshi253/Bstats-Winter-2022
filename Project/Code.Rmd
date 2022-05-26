@@ -1,0 +1,204 @@
+---
+title: "Biostatistics Project"
+author: "Meetakshi Setiya, 2019253"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+```{bash}
+cd ~/Documents/R/Project/
+ls
+```
+```{r}
+library(hash)
+```
+
+```{r}
+t0_data <- read.csv("T0_data.csv")
+tc1_data <- read.csv("TC1_data.csv")
+tc2_data <- read.csv("TC2_data.csv")
+tc3_data <- read.csv("TC3_data.csv")
+tc4_data <- read.csv("TC4_data.csv")
+tc5_data <- read.csv("TC5_data.csv")
+colnames(t0_data) <- c('Genes','a','b','c','d')
+colnames(tc1_data) <- c('Genes','a','b','c','d')
+colnames(tc2_data) <- c('Genes','a','b','c','d')
+colnames(tc3_data) <- c('Genes','a','b','c','d')
+colnames(tc4_data) <- c('Genes','a','b','c','d')
+colnames(tc5_data) <- c('Genes','a','b','c','d')
+chemicals = list(t0_data, tc1_data, tc2_data, tc3_data, tc4_data, tc5_data)
+```
+
+I have assumed that the files are structured this way: 4 samples of the same gene were taken for each gene and they together made 4 groups a, b, c and d. This was done to ensure that the consistent results are obtained all across the 4 samples from the same genes.
+
+**All populations are assumed to be parametric since they are generated from rnorm()**
+
+---
+
+#### Q1. Based on the transcriptomic data, which of these chemicals are structurally related to each other, and how did you come to this conclusion.
+
+Chemicals will be structurally related to each other if their biological activities across all four groups does not differ. This can be checked via a paired t-test.
+
+```{r}
+check_ttest <- function(dist1, dist2)
+{
+  p.a <- t.test(dist1$a,dist2$a,paired=TRUE)$p.value
+  p.b <- t.test(dist1$b,dist2$b,paired=TRUE)$p.value
+  p.c <- t.test(dist1$c,dist2$c,paired=TRUE)$p.value
+  p.d <- t.test(dist1$d,dist2$d,paired=TRUE)$p.value
+  
+  count <- 0
+  if(p.a>0.05)
+    count <- count+1
+  if(p.b>0.05)
+    count <- count+1
+  if(p.c>0.05)
+    count <- count+1
+  if(p.d>0.05)
+    count <- count+1
+  
+  #check that the two chemicals show the same effect on at least 50% of the sample population
+  return (list(count>=2, p.a, p.b, p.c, p.d))
+}
+
+sim <- hash()
+sim[["TC1, TC2"]] <- check_ttest(tc1_data, tc2_data)[1]
+sim[["TC1, TC3"]] <- check_ttest(tc1_data, tc3_data)[1]
+sim[["TC1, TC4"]] <- check_ttest(tc1_data, tc4_data)[1]
+sim[["TC1, TC5"]] <- check_ttest(tc1_data, tc5_data)[1]
+sim[["TC2, TC3"]] <- check_ttest(tc2_data, tc3_data)[1]
+sim[["TC2, TC4"]] <- check_ttest(tc2_data, tc4_data)[1]
+sim[["TC2, TC5"]] <- check_ttest(tc2_data, tc5_data)[1]
+sim[["TC3, TC4"]] <- check_ttest(tc3_data, tc4_data)[1]
+sim[["TC3, TC5"]] <- check_ttest(tc3_data, tc5_data)[1]
+sim[["TC4, TC5"]] <- check_ttest(tc4_data, tc5_data)[1]
+```
+
+
+```{r}
+#check which chemicals are structurally similar
+print_similar <- function(sim)
+{
+  print("Structurally Similar Chemicals are: ")
+  for (k in keys(sim))
+  {
+    if(sim[[k]]==TRUE)
+    {
+      print(k)
+    }
+  }
+}
+
+print_similar(sim)
+```
+
+Thus, TC3 and TC5 are structurally similar. 
+How I reached this conclusion was through these steps:
+
+* First, I performed paired t-test to check difference in means of two groups on each of the corresponding samples a, b, c and d for each chemical pair.
+* Then, I found the p-values obtained for each chemical pair for samples a, b, c and d.
+* Then, checked if the p-value was non-significant i.e. there is no difference in means for at least 50% of the corresponding sample distributions for those two chemicals i.e. any two of a, b, c and d.
+* If it was, then those two chemicals showed similar biological activity and hence, have a similar chemical structure.
+
+---
+
+#### Q2. What genes are responsible for justifying structural similarity and dissimilarity? Provide the names of the top 10 genes in each condition.
+
+Structural similarity and dissimilarity would be defined by how consistent or inconsistent the activity of respective drugs is on the basal transcriptome respectively. What I have done here is calculated the effect size for all genes per drug with the basal transcriptome corresponding to the genes. This aggregates the effect of the drug across a,b,c and d.
+
+Now, whether a gene has consistent effect sizes across all drugs can be found by calculating the variance of the observed drug effects. Finally, top 10 drugs with least effect variation across all drugs are the ones that can potentially lead to structural similarity. The top 10 drugs with the highest variation across all drugs lead to structural dissimilarity.
+
+Top 10 genes responsible for justifying structural similarity:
+These will be genes whose mean effect remains consistent over the chemicals.
+
+```{r effsize} 
+variation_in_effect <- function(includet4)
+{
+  eff_var <- list(length(1000))
+  for (i in 1:nrow(tc3_data))
+  {
+    pop0 <- as.numeric(unlist(t0_data[i,][-1]))
+    pop1 <- as.numeric(unlist(tc1_data[i,][-1]))
+    pop2 <- as.numeric(unlist(tc2_data[i,][-1]))
+    pop3 <- as.numeric(unlist(tc3_data[i,][-1]))
+    pop4 <- as.numeric(unlist(tc4_data[i,][-1]))
+    pop5 <- as.numeric(unlist(tc5_data[i,][-1]))
+    eff1 <- cohen.d(pop0, pop1)$estimate
+    eff2 <- cohen.d(pop0, pop2)$estimate
+    eff3 <- cohen.d(pop0, pop3)$estimate
+    eff4 <- cohen.d(pop0, pop4)$estimate
+    eff5 <- cohen.d(pop0, pop5)$estimate
+    if(includet4)
+      eff_var[i] <- var(c(eff1, eff2, eff3, eff4, eff5))
+    else
+      eff_var[i] <- var(c(eff1, eff2, eff3, eff5))
+  }
+  df <- data.frame(Genes = t0_data$Genes)
+  df$EffectVariation <- eff_var
+  df <- as.data.frame(lapply(df, unlist))
+  return (df)
+}
+```
+
+Top 10 genes responsible for justifying structural similarity:
+These will be genes whose mean effect is the most consistent across different chemicals.
+```{r}
+df <- variation_in_effect(TRUE)
+df <- df[order(df$EffectVariation, decreasing = FALSE),]
+print(df[1:10,])
+```
+Top 10 genes responsible for justifying structural dissimilarity:
+These will be drugs whose mean effect size is vastly inconsistent across different chemicals.
+```{r}
+print(df[1000:991,])
+```
+
+---
+
+#### Q3. Assuming that the experimentalist has done some mistake by forgetting to add compound C4 on the cells, how will the results for questions 1 and 2 change?
+
+Let us check if there is a statistical difference in the basal transcriptome data and data after adding C4
+
+```{r}
+sim.t0_tc4 <- check_ttest(t0_data, tc4_data)
+print(sprintf("p-value after t.test on population a: %f", sim.t0_tc4[2]))
+print(sprintf("p-value after t.test on population b: %f", sim.t0_tc4[3]))
+print(sprintf("p-value after t.test on population c: %f", sim.t0_tc4[4]))
+print(sprintf("p-value after t.test on population d: %f", sim.t0_tc4[5]))
+```
+
+All of these are greater than 0.05 which means there is no statistical difference between the current basal transcriptome data and that in the file TC4_data. Since the experimentalist has forgotten to add compound C4, we can remove the data tc4 from consideration.
+
+
+The answer to Q1 then becomes:
+
+```{r}
+sim.pt3 <- hash()
+sim.pt3[["TC1, TC2"]] <- check_ttest(tc1_data, tc2_data)[1]
+sim.pt3[["TC1, TC3"]] <- check_ttest(tc1_data, tc3_data)[1]
+sim.pt3[["TC1, TC5"]] <- check_ttest(tc1_data, tc5_data)[1]
+sim.pt3[["TC2, TC3"]] <- check_ttest(tc2_data, tc3_data)[1]
+sim.pt3[["TC2, TC5"]] <- check_ttest(tc2_data, tc5_data)[1]
+sim.pt3[["TC3, TC5"]] <- check_ttest(tc3_data, tc5_data)[1]
+
+print_similar(sim.pt3)
+```
+(no change, because similar chemicals were found to be TC3 and TC5, no role played by TC4 here).
+
+
+The answer to Q2 becomes:
+
+```{r}
+df.pt3 <- variation_in_effect(FALSE)
+```
+
+Top 10 genes responsible for justifying structural similarity:
+```{r}
+df.pt3 <- df.pt3[order(df.pt3$EffectVariation, decreasing = FALSE),]
+print(df.pt3[1:10,])
+```
+
+Top 10 genes responsible for justifying structural dissimilarity:
+```{r}
+print(df.pt3[1000:991,])
+```
